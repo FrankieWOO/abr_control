@@ -1,6 +1,6 @@
 import numpy as np
 
-from .path_planner import PathPlanner
+from abr_control.controllers.path_planners import PathPlanner
 
 
 class Linear(PathPlanner):
@@ -17,7 +17,7 @@ class Linear(PathPlanner):
         super(Linear, self).__init__(robot_config)
 
     def generate_path(self, state, target, n_timesteps=200,
-                 dt=0.001, plot=False):
+                      dt=0.001, plot=False):
         """ Generates a linear trajectory to the target
 
         Parameters
