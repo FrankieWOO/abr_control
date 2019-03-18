@@ -66,6 +66,7 @@ class OSC(controller.Controller):
         self.ZEROS_SIX = np.zeros(6)
         self.POSITION_CTRLR = [True, True, True, False, False, False]
         # null space filter gains
+        self.nkp = 100.0
         self.nkv = 10.0
 
     def generate(self, q, dq,
@@ -156,19 +157,6 @@ class OSC(controller.Controller):
                 q_d, transformations.quaternion_conjugate(q_e))
             u_task[3:] = -self.ko / self.kp * q_r[1:] * np.sign(q_r[0])
 
-            # # Method 2 --------------------------------------------------------
-            # # From (Caccavale et al, 1997) Section IV Quaternion feedback -----
-            # # get rotation matrix for the end effector orientation
-            # R_e = self.robot_config.R('EE', q)
-            # # get rotation matrix for the target orientation
-            # R_d = transformations.euler_matrix(
-            #     target[3], target[4], target[5], axes='rxyz')[:3, :3]
-            # R_ed = np.dot(R_e.T, R_d)  # eq 24
-            # q_ed = transformations.unit_vector(
-            #     transformations.quaternion_from_matrix(R_ed))
-            # u_task[3:] = -self.ko / self.kp * np.dot(R_e, q_ed[1:])  # eq 34
-
-
         # isolate task space forces corresponding to controlled DOF
         u_task = u_task[ctrlr_dof]
 
@@ -237,9 +225,26 @@ class OSC(controller.Controller):
 
         # add in secondary control signal -------------------------------------
         if self.null_control:
+            # calculated desired joint angle acceleration using rest angles
+            null_indices = np.array([False, True, True, True, True, True])
+            REST_ANGLES = np.array([None,
+                                     np.pi/4.0,
+                                     -np.pi/2.0,
+                                     np.pi/4.0,
+                                     np.pi/2.0,
+                                     np.pi/2.0,
+                                     ], dtype='float32')
+
+            q_des = ((REST_ANGLES - q + np.pi) % (np.pi * 2) - np.pi)
+
+            q_des[~null_indices] = 0.0
+
+            u_null = np.dot(M, (self.nkp * q_des - self.nkv * dq))
+
             # the secondary controller works as a dampener
             Jbar = np.dot(M_inv, np.dot(J.T, Mx))
-            u_null = np.dot(M, -self.nkv*dq)
+            # u_null = np.dot(M, -self.nkv*dq)
+
             null_filter = (self.IDENTITY_N_JOINTS - np.dot(J.T, Jbar.T))
             u += np.dot(null_filter, u_null)
 
