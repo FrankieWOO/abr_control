@@ -139,7 +139,7 @@ class DynamicsAdaptation(Signal):
             # active throughout the whole range specified
             intercepts = AreaIntercepts(
                 dimensions=n_input,
-                base=Triangular(-0.9, -0.9, 0.0))
+                base=Triangular(-0.9, -0.4, 0.0))
 
             self.adapt_ens = []
             self.conn_learn = []
@@ -433,6 +433,34 @@ class DynamicsAdaptation(Signal):
         else:
             weights_file = test_name + '/run%i.npz' % run_num
         return weights_file
+
+
+    def get_weights(self, backend=None):
+        """ Get the current weights
+        backend: string: Optional, (Default: None)
+            'nengo': use nengo as the backend for the adaptive population
+            'nengo_spinnaker': use spinnaker as the adaptive population
+        """
+
+        if backend is not None:
+            # if a backend is passed in, overwrite the current self.backend
+            self.backend = backend
+
+        if self.backend == 'nengo_spinnaker':
+            import nengo_spinnaker.utils.learning
+            # Need to power cycle spinnaker for repeated runs, so sim.close and
+            # sleep is unnecessary, unless power cycling is automated using two
+            # ethernet connections, then can uncomment the following two lines
+            #self.sim.close()
+            #time.sleep(5)
+            weights=([nengo_spinnaker.utils.learning.get_learnt_decoders(
+                     self.sim, ens) for ens in self.adapt_ens])
+
+        else:
+            weights=([self.sim.signals[self.sim.model.sig[conn]['weights']]
+                     for conn in self.conn_learn])
+
+        return weights
 
 class DummySolver(nengo.solvers.Solver):
     """ A Nengo weights solver that returns a provided set of weights.
