@@ -21,10 +21,10 @@ class OSC(controller.Controller):
         The max allowed velocity of the end-effector [meters/second].
         If the control signal specifies something above this
         value it is clipped, if set to None no clipping occurs
-    null_control : boolean, optional (Default: True)
-        Apply a secondary control signal which
-        drives the arm to specified resting joint angles without
-        affecting the movement of the end-effector
+    null_control : Controller, optional (Default: None)
+        A controller to generate a secondary control signal to be
+        applied in the null space of the OSC signal (i.e. applied as much
+        as possible without affecting the movement of the end-effector)
     use_g : boolean, optional (Default: True)
         calculate and compensate for the effects of gravity
     use_C : boolean, optional (Default: False)
@@ -43,7 +43,7 @@ class OSC(controller.Controller):
         task-space integrated error term
     """
     def __init__(self, robot_config, kp=1, kv=None, ki=0, vmax=0.5,
-                 null_control=True, use_g=True, use_C=False, use_dJ=False):
+                 null_control=None, use_g=True, use_C=False, use_dJ=False):
 
         super(OSC, self).__init__(robot_config)
 
@@ -185,18 +185,15 @@ class OSC(controller.Controller):
             # g_task = np.dot(Jbar.T, g)
 
         if self.null_control:
-            # calculated desired joint angle acceleration using rest angles
-            # if self.prev_q is None:
-            #     self.prev_q = np.copy(q)
-            # q_des = ((self.robot_config.REST_ANGLES - q + np.pi) %
-            #          (np.pi * 2) - np.pi)
-            # q_des[~self.null_indices] = 0.0
-            # self.dq_des[self.null_indices] = dq[self.null_indices]
-            # self.prev_q = np.copy(q)
-            #
-            # u_null = np.dot(M, (self.nkp * q_des - self.nkv * self.dq_des))
+
+            u_null = self.null_control.generate(
+                q=q,
+                dq=dq,
+                target_pos=target_pos,
+                target_vel=target_vel,
+                )
+
             Jbar = np.dot(M_inv, np.dot(J.T, Mx))
-            u_null = np.dot(M, -10.0*dq)
             null_filter = (self.IDENTITY_N_JOINTS - np.dot(J.T, Jbar.T))
             u += np.dot(null_filter, u_null)
 
