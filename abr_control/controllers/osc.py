@@ -1,9 +1,9 @@
 import numpy as np
 
-from . import controller
+from .controller import Controller
 
 
-class OSC(controller.Controller):
+class OSC(Controller):
     """ Implements an operational space controller (OSC)
 
     Parameters
@@ -21,7 +21,7 @@ class OSC(controller.Controller):
         The max allowed velocity of the end-effector [meters/second].
         If the control signal specifies something above this
         value it is clipped, if set to None no clipping occurs
-    null_control : Controller, optional (Default: None)
+    null_controler : Controller, optional (Default: None)
         A controller to generate a secondary control signal to be
         applied in the null space of the OSC signal (i.e. applied as much
         as possible without affecting the movement of the end-effector)
@@ -35,15 +35,11 @@ class OSC(controller.Controller):
 
     Attributes
     ----------
-    nkp : float
-        proportional gain term for null controller
-    nkv : float
-        derivative gain term for null controller
     integrated_error : float list, optional (Default: None)
         task-space integrated error term
     """
     def __init__(self, robot_config, kp=1, kv=None, ki=0, vmax=0.5,
-                 null_control=None, use_g=True, use_C=False, use_dJ=False):
+                 null_controllers=None, use_g=True, use_C=False, use_dJ=False):
 
         super(OSC, self).__init__(robot_config)
 
@@ -52,7 +48,7 @@ class OSC(controller.Controller):
         self.ki = ki
         self.vmax = vmax
         self.lamb = self.kp / self.kv
-        self.null_control = null_control
+        self.null_controllers = null_controllers
         self.use_g = use_g
         self.use_C = use_C
         self.use_dJ = use_dJ
@@ -63,9 +59,6 @@ class OSC(controller.Controller):
         self.null_indices = ~np.isnan(self.robot_config.REST_ANGLES)
         self.dq_des = np.zeros(self.robot_config.N_JOINTS)
         self.IDENTITY_N_JOINTS = np.eye(self.robot_config.N_JOINTS)
-        # null space filter gains
-        self.nkp = self.kp * .1
-        self.nkv = np.sqrt(self.nkp)
 
     def generate(self, q, dq, target_pos, target_vel=0,
                  ref_frame='EE', offset=None):
@@ -184,17 +177,14 @@ class OSC(controller.Controller):
             # self.u_g = g
             # g_task = np.dot(Jbar.T, g)
 
-        if self.null_control:
-
-            u_null = self.null_control.generate(
-                q=q,
-                dq=dq,
-                target_pos=target_pos,
-                target_vel=target_vel,
-                )
-
-            Jbar = np.dot(M_inv, np.dot(J.T, Mx))
-            null_filter = (self.IDENTITY_N_JOINTS - np.dot(J.T, Jbar.T))
-            u += np.dot(null_filter, u_null)
+        if self.null_controllers is not None:
+            for null_controller in self.null_controllers:
+                # generate control signal to apply in null space
+                u_null = null_controller.generate(q, dq)
+                # calculate null space filter
+                Jbar = np.dot(M_inv, np.dot(J.T, Mx))
+                null_filter = (self.IDENTITY_N_JOINTS - np.dot(J.T, Jbar.T))
+                # add in filtered null space control signal
+                u += np.dot(null_filter, u_null)
 
         return u
